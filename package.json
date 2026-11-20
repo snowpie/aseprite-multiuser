@@ -1,0 +1,26 @@
+{
+	"name": "asemultiplayer-plugin",
+	"displayName": "local multiplayer plugin",
+	"description": "local multiplayer plugin",
+	"version": "0.1",
+	"author": 
+	{ 
+		"name": "Armez",
+		"email": "zamylosz@gmail.com",
+		"url": "https://gamejolt.com/@armezgames"
+	},
+	"contributors": [],
+	"publisher": "Armez",
+	"license": "MIT",
+	"categories": ["Scripts"],
+	"contributes": 
+	{
+	  "scripts": 
+	  [
+		{
+		  "path": "./asemultiplayer.lua"
+		}
+	  ]
+	}
+}
+  
