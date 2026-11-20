@@ -320,6 +320,8 @@ function init(plugin)
                 force = true
             else
                 local rectPixels = extractRect(bytes, w, rect, bpp)
+                -- Pack rect coords as binary prefix: count (1 byte) + per rect x,y,w,h (4x uint16 LE)
+                local prefix = string.pack("<B I2I2I2I2", 1, rect.x, rect.y, rect.w, rect.h)
                 sendBinary({
                     type = "cel_diff",
                     layer = layerName,
@@ -329,8 +331,7 @@ function init(plugin)
                     pos_x = pos.x,
                     pos_y = pos.y,
                     bpp = bpp,
-                    rects = { rect },
-                }, rectPixels)
+                }, prefix .. rectPixels)
                 snapshots[key] = bytes
                 return
             end
@@ -360,6 +361,7 @@ function init(plugin)
         local frameNum = header.frame
         local w = header.img_w
         local h = header.img_h
+        if not layerName or not frameNum or not w or not h then return end
         local bpp = header.bpp or 4
 
         local layer = findLayerByName(layerName, sprite)
@@ -391,7 +393,7 @@ function init(plugin)
         snapshots[celKey(layerName, frameNum)] = pixelBytes
     end
 
-    local function handleCelDiff(header, rectPixels)
+    local function handleCelDiff(header, payload)
         local sprite = findSpriteByName(plugin.preferences.syncTab)
         if not sprite then return end
 
@@ -399,9 +401,8 @@ function init(plugin)
         local frameNum = header.frame
         local w = header.img_w
         local h = header.img_h
+        if not layerName or not frameNum or not w or not h then return end
         local bpp = header.bpp or 4
-        local rects = header.rects
-        if not rects or #rects == 0 then return end
 
         local layer = findLayerByName(layerName, sprite)
         if not layer then return end
@@ -409,17 +410,26 @@ function init(plugin)
         local cel = layer:cel(frameNum)
         if not cel then return end
 
+        -- Unpack rect coords from binary prefix
+        local numRects = string.unpack("<B", payload)
+        local pos = 2
+        local rects = {}
+        for i = 1, numRects do
+            local x, y, rw, rh
+            x, y, rw, rh, pos = string.unpack("<I2I2I2I2", payload, pos)
+            rects[i] = { x = x, y = y, w = rw, h = rh }
+        end
+
         applyingRemote = true
         app.transaction("remote diff", function()
             local img = cel.image:clone()
             local currentBytes = img.bytes
-            local offset = 1
 
             for _, rect in ipairs(rects) do
                 local rectSize = rect.w * rect.h * bpp
-                local chunk = rectPixels:sub(offset, offset + rectSize - 1)
+                local chunk = payload:sub(pos, pos + rectSize - 1)
                 currentBytes = applyRect(currentBytes, w, rect, bpp, chunk)
-                offset = offset + rectSize
+                pos = pos + rectSize
             end
 
             img.bytes = currentBytes

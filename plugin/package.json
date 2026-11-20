@@ -2,13 +2,13 @@
     "name": "asemultiplayer-plugin",
     "displayName": "Multiplayer Sync",
     "description": "Real-time multiplayer editing via WebSocket relay server",
-    "version": "2.0",
+    "version": "0.0.3",
     "author": {
-        "name": "Armez",
-        "email": "zamylosz@gmail.com"
+        "name": "Slothy",
+        "email": "slothy@gromatic.uk"
     },
     "contributors": [],
-    "publisher": "Armez",
+    "publisher": "Slothy",
     "license": "MIT",
     "categories": ["Scripts"],
     "contributes": {

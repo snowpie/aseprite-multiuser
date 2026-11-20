@@ -80,7 +80,7 @@ async def handle_binary(client: Client, data: bytes):
         await broadcast(client.room, out, sender=client.name)
 
         if kind == "cel_full":
-            cel_cache[client.room][cache_key] = data[sep + 1 :]
+            cel_cache[client.room][cache_key] = out
             log.info(
                 "cached full cel %s/%s frame %s (%d bytes)",
                 client.room, layer, frame, len(data) - sep - 1,
@@ -89,16 +89,9 @@ async def handle_binary(client: Client, data: bytes):
 
 async def send_cached_state(client: Client):
     cached = cel_cache.get(client.room, {})
-    for cache_key, pixels in cached.items():
-        layer, frame = cache_key.split("\x00", 1)
-        header = json.dumps({
-            "type": "cel_full",
-            "user": "__server__",
-            "layer": layer,
-            "frame": int(frame),
-        }).encode("utf-8")
+    for cache_key, msg in cached.items():
         try:
-            await client.ws.send(header + b"\x00" + pixels)
+            await client.ws.send(msg)
         except websockets.ConnectionClosed:
             break
 
