@@ -198,14 +198,29 @@ function init(plugin)
 
     -- ─── Diff computation ───────────────────────────────────────────
 
-    -- Returns the raw image bytes and dimensions for a cel, or nil
+    -- Returns pure pixel data (no stride padding) and dimensions for a cel, or nil
     local function getCelData(sprite, layerName, frameNum)
         local layer = findLayerByName(layerName, sprite)
         if not layer then return nil end
         local cel = layer:cel(frameNum)
         if not cel then return nil end
         local img = cel.image
-        return img.bytes, img.width, img.height, cel.position, img.colorMode
+        local w, h = img.width, img.height
+        local bpp = bppForMode(img.colorMode)
+        local rowBytes = w * bpp
+        -- Strip stride padding if rowStride > w * bpp
+        local bytes
+        if img.rowStride == rowBytes then
+            bytes = img.bytes
+        else
+            local rows = {}
+            for y = 0, h - 1 do
+                local off = y * img.rowStride + 1
+                rows[#rows + 1] = img.bytes:sub(off, off + rowBytes - 1)
+            end
+            bytes = table.concat(rows)
+        end
+        return bytes, w, h, cel.position, img.colorMode
     end
 
     -- Compute bounding box of changed pixels between two byte strings of equal length.
@@ -379,8 +394,18 @@ function init(plugin)
         applyingRemote = true
         app.transaction("remote cel", function()
             local img = Image(w, h, layer.sprite.colorMode)
-            if #pixelBytes == img.rowStride * h then
+            local rowBytes = w * bpp
+            if img.rowStride == rowBytes then
                 img.bytes = pixelBytes
+            else
+                -- Repack with receiver's stride padding
+                local rows = {}
+                local pad = string.rep("\0", img.rowStride - rowBytes)
+                for y = 0, h - 1 do
+                    local off = y * rowBytes + 1
+                    rows[#rows + 1] = pixelBytes:sub(off, off + rowBytes - 1) .. pad
+                end
+                img.bytes = table.concat(rows)
             end
             local cel = layer:cel(frameNum)
             if cel then
