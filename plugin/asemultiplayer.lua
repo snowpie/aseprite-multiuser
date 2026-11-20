@@ -502,6 +502,25 @@ function init(plugin)
         end
     end
 
+    -- ─── Layer name dedup ─────────────────────────────────────────────
+
+    local function deduplicateLayerNames(sprite)
+        local seen = {}
+        local renamed = false
+        for _, layer in ipairs(sprite.layers) do
+            if seen[layer.name] then
+                local base = layer.name
+                local n = 2
+                while seen[base .. " (" .. n .. ")"] do n = n + 1 end
+                layer.name = base .. " (" .. n .. ")"
+                print("renamed duplicate layer to: " .. layer.name)
+                renamed = true
+            end
+            seen[layer.name] = true
+        end
+        return renamed
+    end
+
     -- ─── Layer order sync ────────────────────────────────────────────
 
     local function getLayerOrder(sprite)
@@ -655,6 +674,8 @@ function init(plugin)
                 local spr = findSpriteByName(plugin.preferences.syncTab)
                 if not spr then return end
                 if not app.sprite or app.sprite.filename ~= plugin.preferences.syncTab then return end
+
+                deduplicateLayerNames(spr)
 
                 local curLayer = app.layer and app.layer.name or nil
                 local curFrame = app.frame and app.frame.frameNumber or nil
