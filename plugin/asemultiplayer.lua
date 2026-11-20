@@ -163,6 +163,8 @@ function init(plugin)
     local peerCursors = {}
     -- Peer list
     local peers = {}
+    -- Last sent layer order (list of names, bottom to top)
+    local lastLayerOrder = {}
 
     local statusDialog = nil
 
@@ -455,8 +457,12 @@ function init(plugin)
             print(msg.user .. " joined")
             -- Send our current state so they can catch up
             local sprite = findSpriteByName(plugin.preferences.syncTab)
-            if sprite and myLayerName then
-                pushCel(sprite, myLayerName, myFrameNumber, true)
+            if sprite then
+                lastLayerOrder = {}
+                pushLayerOrder(sprite)
+                if myLayerName then
+                    pushCel(sprite, myLayerName, myFrameNumber, true)
+                end
             end
 
         elseif kind == "user_leave" then
@@ -474,6 +480,9 @@ function init(plugin)
                 layer = msg.layer,
                 frame = msg.frame,
             }
+
+        elseif kind == "layer_op" and msg.op == "reorder" then
+            handleLayerOrder(msg)
         end
 
         updateStatusDialog()
@@ -491,6 +500,63 @@ function init(plugin)
         elseif header.type == "cel_diff" then
             handleCelDiff(header, pixels)
         end
+    end
+
+    -- ─── Layer order sync ────────────────────────────────────────────
+
+    local function getLayerOrder(sprite)
+        local order = {}
+        for _, layer in ipairs(sprite.layers) do
+            order[#order + 1] = layer.name
+        end
+        return order
+    end
+
+    local function layerOrderChanged(a, b)
+        if #a ~= #b then return true end
+        for i = 1, #a do
+            if a[i] ~= b[i] then return true end
+        end
+        return false
+    end
+
+    local function pushLayerOrder(sprite)
+        local order = getLayerOrder(sprite)
+        if not layerOrderChanged(order, lastLayerOrder) then return end
+        lastLayerOrder = order
+        sendJSON({
+            type = "layer_op",
+            op = "reorder",
+            order = order,
+        })
+    end
+
+    local function handleLayerOrder(msg)
+        local sprite = findSpriteByName(plugin.preferences.syncTab)
+        if not sprite then return end
+        local order = msg.order
+        if not order or #order == 0 then return end
+
+        applyingRemote = true
+        app.transaction("remote layer order", function()
+            -- Create missing layers
+            for _, name in ipairs(order) do
+                if not findLayerByName(name, sprite) then
+                    local newLayer = sprite:newLayer()
+                    newLayer.name = name
+                end
+            end
+
+            -- Reorder: set stackIndex bottom-to-top (1 = bottom)
+            for i, name in ipairs(order) do
+                local layer = findLayerByName(name, sprite)
+                if layer and layer.stackIndex ~= i then
+                    layer.stackIndex = i
+                end
+            end
+        end)
+        lastLayerOrder = order
+        applyingRemote = false
     end
 
     -- ─── Status dialog ──────────────────────────────────────────────
@@ -607,6 +673,9 @@ function init(plugin)
                 if myLayerName and myFrameNumber then
                     pushCel(spr, myLayerName, myFrameNumber, false)
                 end
+
+                -- Sync layer order
+                pushLayerOrder(spr)
 
                 updateStatusDialog()
             end,
