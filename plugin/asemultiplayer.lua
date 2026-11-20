@@ -443,65 +443,6 @@ function init(plugin)
         snapshots[celKey(layerName, frameNum)] = getCelData(sprite, layerName, frameNum)
     end
 
-    local function handleTextMessage(raw)
-        local msg = JSON.decode(raw)
-        if not msg then return end
-        local kind = msg.type
-
-        if kind == "welcome" then
-            peers = msg.users or {}
-            print("connected to room " .. (msg.room or "?") .. " with " .. #peers .. " users")
-
-        elseif kind == "user_join" then
-            peers[#peers + 1] = msg.user
-            print(msg.user .. " joined")
-            -- Send our current state so they can catch up
-            local sprite = findSpriteByName(plugin.preferences.syncTab)
-            if sprite then
-                lastLayerOrder = {}
-                pushLayerOrder(sprite)
-                if myLayerName then
-                    pushCel(sprite, myLayerName, myFrameNumber, true)
-                end
-            end
-
-        elseif kind == "user_leave" then
-            for i, name in ipairs(peers) do
-                if name == msg.user then
-                    table.remove(peers, i)
-                    break
-                end
-            end
-            peerCursors[msg.user] = nil
-            print(msg.user .. " left")
-
-        elseif kind == "cursor" then
-            peerCursors[msg.user] = {
-                layer = msg.layer,
-                frame = msg.frame,
-            }
-
-        elseif kind == "layer_op" and msg.op == "reorder" then
-            handleLayerOrder(msg)
-        end
-
-        updateStatusDialog()
-    end
-
-    local function handleBinaryMessage(data)
-        local sep = data:find("\0")
-        if not sep then return end
-        local header = JSON.decode(data:sub(1, sep - 1))
-        if not header then return end
-        local pixels = data:sub(sep + 1)
-
-        if header.type == "cel_full" then
-            handleCelFull(header, pixels)
-        elseif header.type == "cel_diff" then
-            handleCelDiff(header, pixels)
-        end
-    end
-
     -- ─── Layer name dedup ─────────────────────────────────────────────
 
     local function deduplicateLayerNames(sprite)
@@ -576,6 +517,67 @@ function init(plugin)
         end)
         lastLayerOrder = order
         applyingRemote = false
+    end
+
+    -- ─── Message handlers ───────────────────────────────────────────
+
+    local function handleTextMessage(raw)
+        local msg = JSON.decode(raw)
+        if not msg then return end
+        local kind = msg.type
+
+        if kind == "welcome" then
+            peers = msg.users or {}
+            print("connected to room " .. (msg.room or "?") .. " with " .. #peers .. " users")
+
+        elseif kind == "user_join" then
+            peers[#peers + 1] = msg.user
+            print(msg.user .. " joined")
+            -- Send our current state so they can catch up
+            local sprite = findSpriteByName(plugin.preferences.syncTab)
+            if sprite then
+                lastLayerOrder = {}
+                pushLayerOrder(sprite)
+                if myLayerName then
+                    pushCel(sprite, myLayerName, myFrameNumber, true)
+                end
+            end
+
+        elseif kind == "user_leave" then
+            for i, name in ipairs(peers) do
+                if name == msg.user then
+                    table.remove(peers, i)
+                    break
+                end
+            end
+            peerCursors[msg.user] = nil
+            print(msg.user .. " left")
+
+        elseif kind == "cursor" then
+            peerCursors[msg.user] = {
+                layer = msg.layer,
+                frame = msg.frame,
+            }
+
+        elseif kind == "layer_op" and msg.op == "reorder" then
+            handleLayerOrder(msg)
+        end
+
+        updateStatusDialog()
+    end
+
+    local function handleBinaryMessage(data)
+        local sep = data:find("\0")
+        if not sep then return end
+        local header = JSON.decode(data:sub(1, sep - 1))
+        if not header then return end
+        local pixels = data:sub(sep + 1)
+
+        if header.type == "cel_full" then
+            handleCelFull(header, pixels)
+        elseif header.type == "cel_diff" then
+            handleCelDiff(header, pixels)
+        end
     end
 
     -- ─── Status dialog ──────────────────────────────────────────────
