@@ -198,6 +198,13 @@ function init(plugin)
 
     -- ─── Diff computation ───────────────────────────────────────────
 
+    local function bppForMode(colorMode)
+        if colorMode == ColorMode.RGB then return 4 end
+        if colorMode == ColorMode.GRAY or colorMode == ColorMode.GRAYSCALE then return 2 end
+        if colorMode == ColorMode.INDEXED then return 1 end
+        return 4
+    end
+
     -- Returns pure pixel data (no stride padding) and dimensions for a cel, or nil
     local function getCelData(sprite, layerName, frameNum)
         local layer = findLayerByName(layerName, sprite)
@@ -287,13 +294,6 @@ function init(plugin)
             buf[#buf + 1] = src:sub(prevEnd + 1)
         end
         return table.concat(buf)
-    end
-
-    local function bppForMode(colorMode)
-        if colorMode == ColorMode.RGB then return 4 end
-        if colorMode == ColorMode.GRAY or colorMode == ColorMode.GRAYSCALE then return 2 end
-        if colorMode == ColorMode.INDEXED then return 1 end
-        return 4 -- default to RGBA
     end
 
     -- ─── Send helpers ───────────────────────────────────────────────
