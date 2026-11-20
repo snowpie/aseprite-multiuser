@@ -1,52 +1,83 @@
-# Local Multiplayer Plugin for Aseprite
+# Multiplayer Plugin for Aseprite
 
-The local multiplayer plugin for Aseprite allows you to connect two PCs on a local network to work together on animations or multi-layer artwork.  
-During installation, allow the plugin to use its internal folder.  
-Extension function is in **File → Multiplayer**.
+Real-time collaborative sprite editing. Multiple users connect to a shared relay server via WebSocket and sync cel-level pixel diffs.
 
-## Multiplayer Sync Setup
-
-1. **My IP**: Shows your local IP address.  
-2. **IP to sync**: Enter the **My IP** from the computer you want to connect with, and vice versa.  
-3. **PORT to sync**: The port through which the computers will communicate. Unless you are using another application on this port, you can leave the default 5000.  
-4. **Interval of sync**: Enter how often the data should be synchronized.  
-5. **Sync Tab**: Select the sprite tab that you want to synchronize.  
-
-After setting all the parameters, you can enable synchronization on both computers using the **Turn sync ON** button. If any error occurs, make sure **IP to sync** and **Sync Tab** are correctly set, then press **Clear server files** and try again.
-
-After successful synchronization, you will see two new windows:  
-
-### Server Window
-This window will show something like this:  
+## Architecture
 
 ```
-Plugin folder: C:\Users\User\AppData\Roaming\Aseprite\extensions\asemultiplayer-plugin
-Command file: C:\Users\User\AppData\Roaming\Aseprite\extensions\asemultiplayer-plugin\command.txt
-P2P server listening on port 5000, peer 192.168.x.y
+┌──────────┐  ┌──────────┐  ┌──────────┐
+│ Aseprite │  │ Aseprite │  │ Aseprite │
+│  Plugin  │  │  Plugin  │  │  Plugin  │
+└────┬─────┘  └────┬─────┘  └────┬─────┘
+     │ WebSocket    │             │
+     └──────┬───────┘─────────────┘
+            │
+     ┌──────┴──────┐
+     │ Relay Server│
+     │  (Docker)   │
+     └─────────────┘
 ```
-Do not close this window. It is going to show server commands, send and recived cels and other network related information.
 
-### Aseprite SYNC Window aka SYNC Detector
-Aseprite window with the title `SYNC (closing me will stop sync)`.  
-The title is not a joke, this window monitors synchronization, and closing it will stop the sync. Close it only when you finish collaborative work.
+- **Server**: WebSocket relay that broadcasts pixel diffs between clients in a room. No Aseprite knowledge needed — it just forwards messages.
+- **Plugin**: Lua script using Aseprite's native WebSocket API. Computes dirty-rect diffs on cel images and sends only changed pixels.
 
-This window is used to monitor synchronization.
+## Setup
 
-1. **Tab**: Shows whether the current tab is the one being synchronized.  
-2. **My Layer**: Shows your current layer.  
-3. **My Frame**: Shows your current frame.  
-4. **Peer Layer**: Shows the layer of your collaborator.  
-5. **Peer Frame**: Shows the frame of your collaborator.  
+### 1. Start the server
 
-The **Push** and **Pull** buttons are used to manually send or receive data if needed.  
+```bash
+cd server
+docker compose up -d
+```
 
-Below these buttons, the extension displays potential conflicts in the project with your collaborator.
+The server listens on port 5000 by default. Override with:
 
-## Suggested Workflow
-The extension automatically sends and receives data at the set interval and whenever the frame or layer changes.  
-To reduce data transfer, frames are sent only if they have been modified.  
-If both collaborators are on the same layer and frame (which the SYNC detector will indicate with a message and three exclamation marks **!!!**), changes will not be sent unless the **Push** button is used.  
-This extension was primarily designed for collaborative animation work, so collaborators usually do not interfere with each other because they work on separate frames.
+```bash
+PORT=8080 docker compose up -d
+```
 
-## Additional Information
-This extension was developed for personal use and may not be perfect. If you encounter any issues or have questions, feel free to reach out via email at **zamylosz@gmail.com**.
+### 2. Install the plugin
+
+Zip the contents of `plugin/` and install in Aseprite:
+
+```bash
+cd plugin
+zip -r asemultiplayer-plugin.zip package.json asemultiplayer.lua
+```
+
+In Aseprite: **Edit → Preferences → Extensions → Add Extension** and select the zip.
+
+### 3. Connect
+
+1. Open a sprite in Aseprite
+2. **File → Multiplayer**
+3. Set the server URL (e.g. `ws://192.168.1.100:5000`)
+4. Choose a room name (all users in the same room sync together)
+5. Pick a username
+6. Select the sprite tab to sync
+7. Click **Connect & Sync**
+
+All users in the room see each other's edits in near-real-time.
+
+## How sync works
+
+- Each client tracks which cel (layer + frame) the user is on
+- On each sync interval, the plugin compares the current cel's pixels against the last-sent snapshot
+- If pixels changed, it computes a dirty bounding rectangle and sends only those pixels
+- If >50% of the image changed, it sends the full cel instead
+- Other clients apply incoming diffs to their local sprite as undoable transactions
+- Cursor positions (which layer/frame each user is on) are shared for awareness
+
+## Same-layer editing
+
+Two users can edit the same layer, even the same cel. Diffs are at pixel granularity — edits in different areas of the same cel merge cleanly. For true same-pixel conflicts, last-write-wins applies (natural for pixel art).
+
+## Differences from v1
+
+| | v1 | v2 |
+|---|---|---|
+| Peers | 2 (hardcoded) | N (room-based) |
+| Transport | Raw TCP + file IPC | WebSocket (native API) |
+| Data sent | Entire .ase file | Pixel diffs or raw image bytes |
+| Server | Spawned per-client | Standalone Docker container |
+| Conflict handling | Warns, blocks same-cel | Pixel-level merge |
